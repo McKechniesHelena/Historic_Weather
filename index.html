@@ -53,6 +53,12 @@
     display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 13px;
   }
   .units label { cursor: pointer; }
+  .years { color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 6px; }
+  .years select {
+    background: var(--panel); border: 1px solid var(--line); color: var(--text);
+    padding: 11px 10px; border-radius: 10px; font-size: 15px; outline: none; cursor: pointer;
+  }
+  .years select:focus { border-color: var(--accent); }
 
   .status { text-align: center; color: var(--muted); margin: 18px 0; min-height: 20px; }
   .status.error { color: #ff8585; }
@@ -106,12 +112,22 @@
 <body>
 <header>
   <h1>🌦️ Historic Weather Averages</h1>
-  <p>Typical weather for any U.S. ZIP code, averaged over the last 10 years — by week, drill into any day.</p>
+  <p>Typical weather for any U.S. ZIP code, averaged over recent years — by week, drill into any day.</p>
 </header>
 
 <div class="wrap">
   <div class="search">
     <input id="zip" type="text" inputmode="numeric" maxlength="5" placeholder="ZIP code (e.g. 90210)" />
+    <label class="years">Years
+      <select id="years">
+        <option value="5">5</option>
+        <option value="10" selected>10</option>
+        <option value="15">15</option>
+        <option value="20">20</option>
+        <option value="25">25</option>
+        <option value="30">30</option>
+      </select>
+    </label>
     <button id="go">Look up</button>
     <span class="units">
       <label><input type="radio" name="unit" value="f" checked /> °F / in</label>
@@ -199,11 +215,11 @@ async function geocode(zip) {
   };
 }
 
-async function fetchHistory(lat, lon) {
+async function fetchHistory(lat, lon, nYears) {
   const end = new Date();
   end.setDate(end.getDate() - 7);            // archive lags a few days
   const start = new Date(end);
-  start.setFullYear(start.getFullYear() - 10);
+  start.setFullYear(start.getFullYear() - nYears);
   start.setDate(start.getDate() + 1);
 
   const url = 'https://archive-api.open-meteo.com/v1/archive'
@@ -389,10 +405,11 @@ async function run() {
   btn.disabled = true;
   document.getElementById('results').classList.add('hidden');
   try {
+    const nYears = parseInt(document.getElementById('years').value, 10) || 10;
     setStatus('Looking up location…');
     const loc = await geocode(zip);
-    setStatus('Fetching ~10 years of daily weather for ' + loc.name + ', ' + loc.state + '… (this can take a few seconds)');
-    const { daily, years } = await fetchHistory(loc.lat, loc.lon);
+    setStatus('Fetching ~' + nYears + ' years of daily weather for ' + loc.name + ', ' + loc.state + '… (this can take a few seconds)');
+    const { daily, years } = await fetchHistory(loc.lat, loc.lon, nYears);
     const days = aggregateByDay(daily);
     const weeks = buildWeeks(days);
     lastData = { weeks, days, loc, years };
