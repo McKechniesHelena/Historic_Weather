@@ -1,0 +1,12 @@
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Python (used only to serve the static site locally)
+__pycache__/
+*.pyc
+
+# Logs
+*.log

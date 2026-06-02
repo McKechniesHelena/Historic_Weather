@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Historic Weather Averages — by Week or Day</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1623;
+    --panel: #182234;
+    --panel-2: #1f2c42;
+    --line: #2c3a52;
+    --text: #e8edf5;
+    --muted: #93a1b8;
+    --accent: #4ea1ff;
+    --hi: #ff6b6b;
+    --lo: #4ea1ff;
+    --precip: #2dd4bf;
+    --hum: #c084fc;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: linear-gradient(180deg, #0b1120 0%, #0f1623 100%);
+    color: var(--text);
+    min-height: 100vh;
+  }
+  header {
+    padding: 28px 24px 8px;
+    text-align: center;
+  }
+  header h1 { margin: 0 0 6px; font-size: 26px; letter-spacing: -0.3px; }
+  header p { margin: 0; color: var(--muted); font-size: 14px; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 16px 20px 60px; }
+
+  .search {
+    display: flex; gap: 10px; justify-content: center; align-items: center;
+    margin: 22px 0 8px; flex-wrap: wrap;
+  }
+  .search input {
+    background: var(--panel); border: 1px solid var(--line); color: var(--text);
+    padding: 12px 16px; border-radius: 10px; font-size: 16px; width: 220px; outline: none;
+  }
+  .search input:focus { border-color: var(--accent); }
+  .search button {
+    background: var(--accent); color: #04121f; border: none; font-weight: 700;
+    padding: 12px 22px; border-radius: 10px; font-size: 15px; cursor: pointer;
+  }
+  .search button:disabled { opacity: .55; cursor: default; }
+  .units {
+    display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 13px;
+  }
+  .units label { cursor: pointer; }
+
+  .status { text-align: center; color: var(--muted); margin: 18px 0; min-height: 20px; }
+  .status.error { color: #ff8585; }
+
+  .place {
+    text-align: center; margin: 6px 0 18px;
+  }
+  .place .name { font-size: 20px; font-weight: 700; }
+  .place .sub { color: var(--muted); font-size: 13px; margin-top: 3px; }
+
+  .cards { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; margin-bottom: 20px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 18px; min-width: 150px; text-align: center;
+  }
+  .card .k { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
+  .card .v { font-size: 22px; font-weight: 700; margin-top: 4px; }
+
+  .chartbox {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px; margin-bottom: 20px;
+  }
+  .chartbox h3 { margin: 0 0 10px; font-size: 15px; color: var(--muted); font-weight: 600; }
+
+  table { width: 100%; border-collapse: collapse; }
+  .tablebox { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  thead th {
+    background: var(--panel-2); color: var(--muted); font-size: 12px; text-transform: uppercase;
+    letter-spacing: .5px; padding: 11px 14px; text-align: right; font-weight: 600;
+  }
+  thead th:first-child { text-align: left; }
+  tbody td { padding: 11px 14px; text-align: right; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  tbody td:first-child { text-align: left; }
+  tbody tr.week { cursor: pointer; }
+  tbody tr.week:hover { background: var(--panel-2); }
+  tbody tr.week .caret { color: var(--muted); display: inline-block; width: 14px; transition: transform .15s; }
+  tbody tr.week.open .caret { transform: rotate(90deg); color: var(--accent); }
+  .hi { color: var(--hi); font-weight: 600; }
+  .lo { color: var(--lo); font-weight: 600; }
+  .detail td { background: #131c2c; font-size: 13px; color: var(--muted); }
+  .detail table { margin: 0; }
+  .detail thead th { background: #0f1828; font-size: 11px; }
+  .detail tbody td { border-top: 1px solid #1d2a3e; }
+  .detail .dayname { color: var(--text); }
+  .hint { color: var(--muted); font-size: 12px; text-align: center; margin: 8px 0 14px; }
+  .hidden { display: none; }
+  footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 26px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🌦️ Historic Weather Averages</h1>
+  <p>Typical weather for any U.S. ZIP code, averaged over the last 10 years — by week, drill into any day.</p>
+</header>
+
+<div class="wrap">
+  <div class="search">
+    <input id="zip" type="text" inputmode="numeric" maxlength="5" placeholder="ZIP code (e.g. 90210)" />
+    <button id="go">Look up</button>
+    <span class="units">
+      <label><input type="radio" name="unit" value="f" checked /> °F / in</label>
+      <label><input type="radio" name="unit" value="c" /> °C / mm</label>
+    </span>
+  </div>
+
+  <div id="status" class="status"></div>
+
+  <div id="results" class="hidden">
+    <div class="place">
+      <div class="name" id="placeName"></div>
+      <div class="sub" id="placeSub"></div>
+    </div>
+
+    <div class="cards" id="cards"></div>
+
+    <div class="chartbox">
+      <h3>Average high &amp; low temperature by week</h3>
+      <canvas id="tempChart" height="120"></canvas>
+    </div>
+    <div class="chartbox">
+      <h3>Average weekly precipitation &amp; humidity</h3>
+      <canvas id="precipChart" height="120"></canvas>
+    </div>
+
+    <p class="hint">▸ Click any week to see day-by-day detail.</p>
+    <div class="tablebox">
+      <table id="weekTable">
+        <thead>
+          <tr>
+            <th>Week</th>
+            <th>Avg High</th>
+            <th>Avg Low</th>
+            <th>Precip</th>
+            <th>Humidity</th>
+          </tr>
+        </thead>
+        <tbody id="weekBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <footer>
+    Data: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> historical reanalysis ·
+    geocoding by <a href="https://www.zippopotam.us/" target="_blank" rel="noopener">Zippopotam.us</a>.
+    Averages computed from ~10 years of daily records.
+  </footer>
+</div>
+
+<script>
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const DAYNAMES = []; // not used; we show calendar dates
+let tempChart, precipChart;
+let lastData = null; // holds aggregated weeks for re-render on unit change
+
+function unit() {
+  return document.querySelector('input[name="unit"]:checked').value;
+}
+function setStatus(msg, isErr) {
+  const el = document.getElementById('status');
+  el.textContent = msg || '';
+  el.classList.toggle('error', !!isErr);
+}
+function pad(n){ return String(n).padStart(2,'0'); }
+function fmtDate(d){ return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()); }
+
+// month/day label from "MM-DD"
+function mdLabel(md){
+  const [m,d] = md.split('-').map(Number);
+  return MONTHS[m-1] + ' ' + d;
+}
+
+async function geocode(zip) {
+  const r = await fetch('https://api.zippopotam.us/us/' + zip);
+  if (!r.ok) throw new Error('ZIP code not found. Please enter a valid U.S. ZIP.');
+  const j = await r.json();
+  const p = j.places[0];
+  return {
+    lat: parseFloat(p.latitude),
+    lon: parseFloat(p.longitude),
+    name: p['place name'],
+    state: p['state abbreviation'],
+    zip: j['post code']
+  };
+}
+
+async function fetchHistory(lat, lon) {
+  const end = new Date();
+  end.setDate(end.getDate() - 7);            // archive lags a few days
+  const start = new Date(end);
+  start.setFullYear(start.getFullYear() - 10);
+  start.setDate(start.getDate() + 1);
+
+  const url = 'https://archive-api.open-meteo.com/v1/archive'
+    + '?latitude=' + lat + '&longitude=' + lon
+    + '&start_date=' + fmtDate(start) + '&end_date=' + fmtDate(end)
+    + '&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,relative_humidity_2m_mean'
+    + '&temperature_unit=fahrenheit&precipitation_unit=inch&timezone=auto';
+
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('Weather service error (' + r.status + '). Try again shortly.');
+  const j = await r.json();
+  if (!j.daily || !j.daily.time) throw new Error('No historical data available for this location.');
+  return { daily: j.daily, years: (start.getFullYear()) + '–' + end.getFullYear() };
+}
+
+// Aggregate by calendar day (MM-DD) across all years. Values stored in °F / inches.
+function aggregateByDay(daily) {
+  const t = daily.time, hi = daily.temperature_2m_max, lo = daily.temperature_2m_min,
+        pr = daily.precipitation_sum, hu = daily.relative_humidity_2m_mean;
+  const map = new Map(); // "MM-DD" -> sums
+  for (let i = 0; i < t.length; i++) {
+    const md = t[i].slice(5); // "MM-DD"
+    let b = map.get(md);
+    if (!b) { b = {hi:0,nh:0, lo:0,nl:0, pr:0,np:0, hu:0,nu:0}; map.set(md, b); }
+    if (hi[i] != null) { b.hi += hi[i]; b.nh++; }
+    if (lo[i] != null) { b.lo += lo[i]; b.nl++; }
+    if (pr[i] != null) { b.pr += pr[i]; b.np++; }
+    if (hu[i] != null) { b.hu += hu[i]; b.nu++; }
+  }
+  // ordered list of days Jan 1 -> Dec 31 (+ Feb 29 if present)
+  const days = [...map.keys()].sort();
+  return days.map(md => {
+    const b = map.get(md);
+    return {
+      md,
+      label: mdLabel(md),
+      hi: b.nh ? b.hi / b.nh : null,
+      lo: b.nl ? b.lo / b.nl : null,
+      precip: b.np ? b.pr / b.np : null,   // avg daily precip (inches)
+      hum: b.nu ? b.hu / b.nu : null
+    };
+  });
+}
+
+// Chunk ordered days into 7-day weeks.
+function buildWeeks(days) {
+  const weeks = [];
+  for (let i = 0; i < days.length; i += 7) {
+    const chunk = days.slice(i, i + 7);
+    const avg = (key) => {
+      const vals = chunk.map(d => d[key]).filter(v => v != null);
+      return vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null;
+    };
+    const precipTotal = chunk.reduce((a,d)=> a + (d.precip||0), 0); // typical weekly total
+    weeks.push({
+      idx: weeks.length + 1,
+      from: chunk[0].label,
+      to: chunk[chunk.length-1].label,
+      hi: avg('hi'),
+      lo: avg('lo'),
+      precip: precipTotal,
+      hum: avg('hum'),
+      days: chunk
+    });
+  }
+  return weeks;
+}
+
+// ---- unit conversion (data stored in F/inches) ----
+function cTemp(f){ return unit()==='c' ? (f-32)*5/9 : f; }
+function cPrecip(inch){ return unit()==='c' ? inch*25.4 : inch; }
+function tUnit(){ return unit()==='c' ? '°C' : '°F'; }
+function pUnit(){ return unit()==='c' ? 'mm' : 'in'; }
+function tFix(f){ return f==null ? '—' : cTemp(f).toFixed(0) + '°'; }
+function pFix(inch){ return inch==null ? '—' : cPrecip(inch).toFixed(unit()==='c'?1:2); }
+function hFix(h){ return h==null ? '—' : Math.round(h) + '%'; }
+
+function render(weeks, days) {
+  // summary cards (annual averages)
+  const all = (key) => { const v = days.map(d=>d[key]).filter(x=>x!=null); return v.reduce((a,b)=>a+b,0)/v.length; };
+  const yearPrecip = days.reduce((a,d)=>a+(d.precip||0),0);
+  const cards = [
+    { k: 'Avg High', v: tFix(all('hi')) + tUnit().slice(1) },
+    { k: 'Avg Low', v: tFix(all('lo')) + tUnit().slice(1) },
+    { k: 'Avg Humidity', v: hFix(all('hum')) },
+    { k: 'Annual Precip', v: pFix(yearPrecip) + ' ' + pUnit() }
+  ];
+  document.getElementById('cards').innerHTML = cards.map(c =>
+    `<div class="card"><div class="k">${c.k}</div><div class="v">${c.v}</div></div>`).join('');
+
+  // table
+  const body = document.getElementById('weekBody');
+  body.innerHTML = '';
+  weeks.forEach(w => {
+    const tr = document.createElement('tr');
+    tr.className = 'week';
+    tr.innerHTML = `
+      <td><span class="caret">▸</span> Week ${w.idx} <span style="color:var(--muted)">(${w.from} – ${w.to})</span></td>
+      <td class="hi">${tFix(w.hi)}</td>
+      <td class="lo">${tFix(w.lo)}</td>
+      <td>${pFix(w.precip)} ${pUnit()}</td>
+      <td>${hFix(w.hum)}</td>`;
+    const detail = document.createElement('tr');
+    detail.className = 'detail hidden';
+    detail.innerHTML = `<td colspan="5">${dayTable(w.days)}</td>`;
+    tr.addEventListener('click', () => {
+      tr.classList.toggle('open');
+      detail.classList.toggle('hidden');
+    });
+    body.appendChild(tr);
+    body.appendChild(detail);
+  });
+
+  drawCharts(weeks);
+}
+
+function dayTable(days) {
+  const rows = days.map(d => `
+    <tr>
+      <td class="dayname">${d.label}</td>
+      <td class="hi">${tFix(d.hi)}</td>
+      <td class="lo">${tFix(d.lo)}</td>
+      <td>${pFix(d.precip)} ${pUnit()}</td>
+      <td>${hFix(d.hum)}</td>
+    </tr>`).join('');
+  return `<table>
+    <thead><tr><th>Day</th><th>Avg High</th><th>Avg Low</th><th>Avg Precip</th><th>Humidity</th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+}
+
+function drawCharts(weeks) {
+  const labels = weeks.map(w => 'Wk ' + w.idx);
+  const hi = weeks.map(w => w.hi==null?null:+cTemp(w.hi).toFixed(1));
+  const lo = weeks.map(w => w.lo==null?null:+cTemp(w.lo).toFixed(1));
+  const pr = weeks.map(w => w.precip==null?null:+cPrecip(w.precip).toFixed(2));
+  const hu = weeks.map(w => w.hum==null?null:Math.round(w.hum));
+  const grid = '#2c3a52', tick = '#93a1b8';
+
+  if (tempChart) tempChart.destroy();
+  tempChart = new Chart(document.getElementById('tempChart'), {
+    type: 'line',
+    data: { labels, datasets: [
+      { label: 'Avg High ('+tUnit()+')', data: hi, borderColor: '#ff6b6b', backgroundColor:'#ff6b6b22', tension:.35, fill:true, pointRadius:0, borderWidth:2 },
+      { label: 'Avg Low ('+tUnit()+')', data: lo, borderColor: '#4ea1ff', backgroundColor:'#4ea1ff22', tension:.35, fill:true, pointRadius:0, borderWidth:2 }
+    ]},
+    options: chartOpts(grid, tick, tUnit())
+  });
+
+  if (precipChart) precipChart.destroy();
+  precipChart = new Chart(document.getElementById('precipChart'), {
+    type: 'bar',
+    data: { labels, datasets: [
+      { type:'bar', label:'Precip ('+pUnit()+')', data: pr, backgroundColor:'#2dd4bf', yAxisID:'y', borderRadius:2 },
+      { type:'line', label:'Humidity (%)', data: hu, borderColor:'#c084fc', backgroundColor:'#c084fc22', tension:.35, pointRadius:0, borderWidth:2, yAxisID:'y1' }
+    ]},
+    options: {
+      responsive:true, maintainAspectRatio:true, interaction:{mode:'index',intersect:false},
+      plugins:{ legend:{labels:{color:'#e8edf5'}}, tooltip:{} },
+      scales:{
+        x:{ grid:{color:grid}, ticks:{color:tick, maxTicksLimit:14} },
+        y:{ position:'left', grid:{color:grid}, ticks:{color:tick}, title:{display:true,text:pUnit(),color:tick} },
+        y1:{ position:'right', grid:{display:false}, ticks:{color:tick}, min:0, max:100, title:{display:true,text:'%',color:tick} }
+      }
+    }
+  });
+}
+
+function chartOpts(grid, tick, ut) {
+  return {
+    responsive:true, maintainAspectRatio:true, interaction:{mode:'index',intersect:false},
+    plugins:{ legend:{labels:{color:'#e8edf5'}} },
+    scales:{
+      x:{ grid:{color:grid}, ticks:{color:tick, maxTicksLimit:14} },
+      y:{ grid:{color:grid}, ticks:{color:tick, callback:v=>v+'°'} }
+    }
+  };
+}
+
+async function run() {
+  const zip = document.getElementById('zip').value.trim();
+  if (!/^\d{5}$/.test(zip)) { setStatus('Please enter a 5-digit U.S. ZIP code.', true); return; }
+  const btn = document.getElementById('go');
+  btn.disabled = true;
+  document.getElementById('results').classList.add('hidden');
+  try {
+    setStatus('Looking up location…');
+    const loc = await geocode(zip);
+    setStatus('Fetching ~10 years of daily weather for ' + loc.name + ', ' + loc.state + '… (this can take a few seconds)');
+    const { daily, years } = await fetchHistory(loc.lat, loc.lon);
+    const days = aggregateByDay(daily);
+    const weeks = buildWeeks(days);
+    lastData = { weeks, days, loc, years };
+
+    document.getElementById('placeName').textContent = loc.name + ', ' + loc.state + ' ' + loc.zip;
+    document.getElementById('placeSub').textContent =
+      loc.lat.toFixed(3) + '°, ' + loc.lon.toFixed(3) + '°  ·  averaged over ' + years;
+    render(weeks, days);
+    document.getElementById('results').classList.remove('hidden');
+    setStatus('');
+  } catch (e) {
+    setStatus(e.message || 'Something went wrong.', true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+document.getElementById('go').addEventListener('click', run);
+document.getElementById('zip').addEventListener('keydown', e => { if (e.key === 'Enter') run(); });
+document.querySelectorAll('input[name="unit"]').forEach(r =>
+  r.addEventListener('change', () => { if (lastData) render(lastData.weeks, lastData.days); }));
+</script>
+</body>
+</html>
