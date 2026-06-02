@@ -117,7 +117,7 @@
 
 <div class="wrap">
   <div class="search">
-    <input id="zip" type="text" inputmode="numeric" maxlength="5" placeholder="ZIP code (e.g. 90210)" />
+    <input id="zip" type="text" inputmode="numeric" maxlength="5" placeholder="ZIP code (e.g. 90210)" value="50010" />
     <label class="years">Years
       <select id="years">
         <option value="5">5</option>
@@ -183,6 +183,33 @@ const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov
 const DAYNAMES = []; // not used; we show calendar dates
 let tempChart, precipChart;
 let lastData = null; // holds aggregated weeks for re-render on unit change
+
+// Draws a vertical "Today" marker at the current week-of-year on a category chart.
+const todayLinePlugin = {
+  id: 'todayLine',
+  afterDatasetsDraw(chart, args, opts) {
+    if (opts == null || opts.index == null) return;
+    const x = chart.scales.x.getPixelForValue(opts.index);
+    if (x == null || isNaN(x)) return;
+    const { top, bottom } = chart.chartArea;
+    const ctx = chart.ctx;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(x, top);
+    ctx.lineTo(x, bottom);
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 4]);
+    ctx.strokeStyle = '#ffd166';
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#ffd166';
+    ctx.font = '600 11px sans-serif';
+    ctx.textAlign = (x > chart.chartArea.right - 32) ? 'right' : 'left';
+    ctx.fillText('▼ Today', x + (ctx.textAlign === 'right' ? -3 : 3), top + 10);
+    ctx.restore();
+  }
+};
+Chart.register(todayLinePlugin);
 
 function unit() {
   return document.querySelector('input[name="unit"]:checked').value;
@@ -333,7 +360,14 @@ function render(weeks, days) {
     body.appendChild(detail);
   });
 
-  drawCharts(weeks);
+  // Find today's position among the day buckets, then its week (chart) index.
+  const now = new Date();
+  const todayMd = pad(now.getMonth() + 1) + '-' + pad(now.getDate());
+  let di = days.findIndex(d => d.md === todayMd);
+  if (di < 0) di = days.findIndex(d => d.md >= todayMd); // fall back to nearest (e.g. Feb 29)
+  const todayIdx = di < 0 ? null : Math.floor(di / 7);
+
+  drawCharts(weeks, todayIdx);
 }
 
 function dayTable(days) {
@@ -350,7 +384,7 @@ function dayTable(days) {
     <tbody>${rows}</tbody></table>`;
 }
 
-function drawCharts(weeks) {
+function drawCharts(weeks, todayIdx) {
   const labels = weeks.map(w => 'Wk ' + w.idx);
   const hi = weeks.map(w => w.hi==null?null:+cTemp(w.hi).toFixed(1));
   const lo = weeks.map(w => w.lo==null?null:+cTemp(w.lo).toFixed(1));
@@ -365,7 +399,7 @@ function drawCharts(weeks) {
       { label: 'Avg High ('+tUnit()+')', data: hi, borderColor: '#ff6b6b', backgroundColor:'#ff6b6b22', tension:.35, fill:true, pointRadius:0, borderWidth:2 },
       { label: 'Avg Low ('+tUnit()+')', data: lo, borderColor: '#4ea1ff', backgroundColor:'#4ea1ff22', tension:.35, fill:true, pointRadius:0, borderWidth:2 }
     ]},
-    options: chartOpts(grid, tick, tUnit())
+    options: chartOpts(grid, tick, tUnit(), todayIdx)
   });
 
   if (precipChart) precipChart.destroy();
@@ -377,7 +411,7 @@ function drawCharts(weeks) {
     ]},
     options: {
       responsive:true, maintainAspectRatio:true, interaction:{mode:'index',intersect:false},
-      plugins:{ legend:{labels:{color:'#e8edf5'}}, tooltip:{} },
+      plugins:{ legend:{labels:{color:'#e8edf5'}}, tooltip:{}, todayLine:{ index: todayIdx } },
       scales:{
         x:{ grid:{color:grid}, ticks:{color:tick, maxTicksLimit:14} },
         y:{ position:'left', grid:{color:grid}, ticks:{color:tick}, title:{display:true,text:pUnit(),color:tick} },
@@ -387,10 +421,10 @@ function drawCharts(weeks) {
   });
 }
 
-function chartOpts(grid, tick, ut) {
+function chartOpts(grid, tick, ut, todayIdx) {
   return {
     responsive:true, maintainAspectRatio:true, interaction:{mode:'index',intersect:false},
-    plugins:{ legend:{labels:{color:'#e8edf5'}} },
+    plugins:{ legend:{labels:{color:'#e8edf5'}}, todayLine:{ index: todayIdx } },
     scales:{
       x:{ grid:{color:grid}, ticks:{color:tick, maxTicksLimit:14} },
       y:{ grid:{color:grid}, ticks:{color:tick, callback:v=>v+'°'} }
@@ -431,6 +465,9 @@ document.getElementById('go').addEventListener('click', run);
 document.getElementById('zip').addEventListener('keydown', e => { if (e.key === 'Enter') run(); });
 document.querySelectorAll('input[name="unit"]').forEach(r =>
   r.addEventListener('change', () => { if (lastData) render(lastData.weeks, lastData.days); }));
+
+// Auto-load the default location (Ames, IA) on first open.
+run();
 </script>
 </body>
 </html>
