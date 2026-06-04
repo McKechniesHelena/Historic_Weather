@@ -8,7 +8,8 @@ over roughly the last 10 years — broken down **by week**, with a click-to-expa
 
 - Enter a U.S. ZIP code and see 10-year climate averages.
 - **Summary cards:** annual avg high, avg low, avg humidity, total precipitation.
-- **Charts:** average high/low temperature by week, and weekly precipitation + humidity.
+- **Charts:** average high/low temperature by week, weekly precipitation + humidity, and the
+  **chance of a wet week** (% of years in which that week saw more than ½ inch of precipitation).
 - **Weekly table:** avg high, avg low, typical weekly precip, avg humidity for all 53 weeks.
 - **Click any week** to expand a day-by-day breakdown.
 - **Unit toggle:** °F / inches ↔ °C / mm (re-renders live).

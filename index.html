@@ -184,6 +184,10 @@
       <h3>Average weekly precipitation &amp; humidity</h3>
       <div class="canvas-h"><canvas id="precipChart"></canvas></div>
     </div>
+    <div class="chartbox">
+      <h3>Chance of a wet week — % of years with more than ½ inch of precipitation</h3>
+      <div class="canvas-h"><canvas id="wetChart"></canvas></div>
+    </div>
 
     <p class="hint">▸ Click any week to see day-by-day detail.</p>
     <div class="tablebox">
@@ -212,7 +216,7 @@
 <script>
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const DAYNAMES = []; // not used; we show calendar dates
-let tempChart, precipChart;
+let tempChart, precipChart, wetChart;
 let lastData = null; // holds aggregated weeks for re-render on unit change
 
 // Draws a vertical "Today" marker at the current week-of-year on a category chart.
@@ -330,6 +334,37 @@ function aggregateByDay(daily) {
   });
 }
 
+// For each week, the % of years in which that week's total precip exceeded
+// the threshold (a fixed 0.5 inch, independent of the display-unit toggle).
+const WET_THRESHOLD_IN = 0.5;
+function weekWetPercent(daily, days) {
+  const wkOf = new Map();                       // MM-DD -> 0-based week index
+  days.forEach((d, i) => wkOf.set(d.md, Math.floor(i / 7)));
+  const nWeeks = Math.ceil(days.length / 7);
+
+  const t = daily.time, pr = daily.precipitation_sum;
+  const yearly = new Map();                      // year -> [weeklyPrecipSum...]
+  for (let i = 0; i < t.length; i++) {
+    const wk = wkOf.get(t[i].slice(5));
+    if (wk == null || pr[i] == null) continue;
+    const yr = t[i].slice(0, 4);
+    let arr = yearly.get(yr);
+    if (!arr) { arr = new Array(nWeeks).fill(null); yearly.set(yr, arr); }
+    arr[wk] = (arr[wk] == null ? 0 : arr[wk]) + pr[i];
+  }
+
+  const over = new Array(nWeeks).fill(0);
+  const seen = new Array(nWeeks).fill(0);
+  for (const arr of yearly.values()) {
+    for (let w = 0; w < nWeeks; w++) {
+      if (arr[w] == null) continue;              // no data for that week that year
+      seen[w]++;
+      if (arr[w] > WET_THRESHOLD_IN) over[w]++;
+    }
+  }
+  return over.map((c, w) => seen[w] ? Math.round(100 * c / seen[w]) : null);
+}
+
 // Chunk ordered days into 7-day weeks.
 function buildWeeks(days) {
   const weeks = [];
@@ -407,7 +442,7 @@ function render(weeks, days) {
   if (di < 0) di = days.findIndex(d => d.md >= todayMd); // fall back to nearest (e.g. Feb 29)
   const todayIdx = di < 0 ? null : Math.floor(di / 7);
 
-  drawCharts(weeks, todayIdx);
+  drawCharts(weeks, todayIdx, lastData ? lastData.wetPct : null);
 }
 
 function dayTable(days) {
@@ -424,7 +459,7 @@ function dayTable(days) {
     <tbody>${rows}</tbody></table>`;
 }
 
-function drawCharts(weeks, todayIdx) {
+function drawCharts(weeks, todayIdx, wetPct) {
   const labels = weeks.map(w => 'Wk ' + w.idx);
   const hi = weeks.map(w => w.hi==null?null:+cTemp(w.hi).toFixed(1));
   const lo = weeks.map(w => w.lo==null?null:+cTemp(w.lo).toFixed(1));
@@ -459,6 +494,27 @@ function drawCharts(weeks, todayIdx) {
       }
     }
   });
+
+  const wet = wetPct || weeks.map(() => null);
+  if (wetChart) wetChart.destroy();
+  wetChart = new Chart(document.getElementById('wetChart'), {
+    type: 'bar',
+    data: { labels, datasets: [
+      { label: '% of years with > ½ in precip', data: wet, backgroundColor: '#38bdf8', borderRadius: 2 }
+    ]},
+    options: {
+      responsive:true, maintainAspectRatio:false, animation:false, interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{labels:{color:'#e8edf5'}},
+        todayLine:{ index: todayIdx },
+        tooltip:{ callbacks:{ label: c => '  ' + (c.parsed.y==null?'no data':c.parsed.y+'% of years') } }
+      },
+      scales:{
+        x:{ grid:{color:grid}, ticks:{color:tick, maxTicksLimit:14} },
+        y:{ min:0, max:100, grid:{color:grid}, ticks:{color:tick, callback:v=>v+'%'} }
+      }
+    }
+  });
 }
 
 function chartOpts(grid, tick, ut, todayIdx) {
@@ -486,7 +542,8 @@ async function run() {
     const { daily, years } = await fetchHistory(loc.lat, loc.lon, nYears);
     const days = aggregateByDay(daily);
     const weeks = buildWeeks(days);
-    lastData = { weeks, days, loc, years };
+    const wetPct = weekWetPercent(daily, days);
+    lastData = { weeks, days, loc, years, wetPct };
 
     document.getElementById('placeName').textContent = loc.name + ', ' + loc.state + ' ' + loc.zip;
     document.getElementById('placeSub').textContent =
