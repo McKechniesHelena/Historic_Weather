@@ -239,8 +239,14 @@ const todayLinePlugin = {
     ctx.setLineDash([]);
     ctx.fillStyle = '#ffd166';
     ctx.font = '600 11px sans-serif';
-    ctx.textAlign = (x > chart.chartArea.right - 32) ? 'right' : 'left';
-    ctx.fillText('▼ Today', x + (ctx.textAlign === 'right' ? -3 : 3), top + 10);
+    ctx.textBaseline = 'alphabetic';
+    // arrow centered exactly on the line
+    ctx.textAlign = 'center';
+    ctx.fillText('▼', x, top + 9);
+    // "Today" label beside the arrow (flips to the left near the right edge)
+    const nearRight = x > chart.chartArea.right - 44;
+    ctx.textAlign = nearRight ? 'right' : 'left';
+    ctx.fillText('Today', x + (nearRight ? -8 : 8), top + 9);
     ctx.restore();
   }
 };
